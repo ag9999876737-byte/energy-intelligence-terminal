@@ -1,12 +1,10 @@
 import streamlit as st
-import os
-from datetime import datetime, timedelta
 import requests
 from openai import OpenAI
 
-# Load keys from secrets
+# Load keys
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-BING_SEARCH_KEY = st.secrets["BING_SEARCH_KEY"]
+SERPAPI_KEY = st.secrets["SERPAPI_KEY"]
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -31,88 +29,78 @@ days = st.sidebar.slider("Last Days to Search", 7, 90, 30)
 
 run_button = st.sidebar.button("Generate Intelligence")
 
-# Search settings
-BING_ENDPOINT = "https://api.bing.microsoft.com/v7.0/search"
-HEADERS = {"Ocp-Apim-Subscription-Key": BING_SEARCH_KEY}
-
 SEARCH_QUERIES = {
-    "Renewable Energy": ["renewable energy", "solar wind capacity news", "clean energy technology"],
-    "Energy Policy": ["energy policy government target", "energy regulation 2025", "government energy strategy"],
-    "Project Finance": ["energy project finance deal", "renewable financing", "energy investment closing"],
-    "Model Auditing": ["financial model audit methodology", "model audit standard energy", "project finance model review"]
+    "Renewable Energy": "renewable energy capacity technology project",
+    "Energy Policy": "energy policy regulation government target",
+    "Project Finance": "energy project finance deal funding debt equity",
+    "Model Auditing": "financial model audit project finance standard"
 }
 
-def bing_search(query):
-    params = {"q": query + " " + region, "mkt": "en-US", "count": 10}
-    resp = requests.get(BING_ENDPOINT, headers=HEADERS, params=params)
+def serp_search(query):
+    params = {
+        "engine": "google",
+        "q": f"{query} {region} last {days} days",
+        "api_key": SERPAPI_KEY,
+        "num": 5
+    }
+    resp = requests.get("https://serpapi.com/search", params=params)
     resp.raise_for_status()
-    results = resp.json().get("webPages", {}).get("value", [])
+    results = resp.json().get("organic_results", [])
     return results
 
-def extract_text_from_result(res):
-    title = res.get("name", "")
-    snippet = res.get("snippet", "") or ""
-    url = res.get("url", "")
-    return {"title": title, "content": snippet, "url": url}
-
-def ai_summarize(article, domain):
+def summarize_with_ai(title, snippet, url, domain):
     prompt = f"""
 You are a senior energy intelligence analyst.
 
-Classify and summarize the following article.
-Only include it if it was published in the last {days} days and is relevant to {domain}.
+Only include if within last {days} days and highly credible.
 
-Output JSON exactly:
-{{
-"title": "...",
-"domain": "...",
-"headline": "...",
-"what_happened": "...",
-"why_it_matters": "...",
-"url": "..."
-}}
+Output format:
 
-Article Title: {article['title']}
-Snippet: {article['content']}
-URL: {article['url']}
+Headline — one sentence
+What happened — 2-3 sentences
+Why it matters — 1-2 sentences
+Source — {url}
+
+Article Title: {title}
+Snippet: {snippet}
+Domain Focus: {domain}
 """
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}]
     )
-    try:
-        return response.choices[0].message.content
-    except:
-        return None
+    return response.choices[0].message.content
 
 if run_button:
-    st.spinner("🔎 Searching and summarizing...")
+    st.spinner("🔎 Searching global intelligence...")
+    
     all_summaries = []
 
     for dom in domains:
         st.subheader(f"📌 {dom}")
+        results = serp_search(SEARCH_QUERIES[dom])
 
-        for q in SEARCH_QUERIES[dom]:
-            results = bing_search(q)
-            for r in results:
-                art = extract_text_from_result(r)
-                summary = ai_summarize(art, dom)
-                if summary:
-                    with st.expander(art["title"]):
-                        st.markdown(summary)
-                        all_summaries.append(summary)
+        for r in results:
+            title = r.get("title", "")
+            snippet = r.get("snippet", "")
+            url = r.get("link", "")
 
-    # Global synthesis
+            summary = summarize_with_ai(title, snippet, url, dom)
+
+            with st.expander(title):
+                st.write(summary)
+                all_summaries.append(summary)
+
     if all_summaries:
-        synth_prompt = f"""
-You are an expert analyst. Based on these summaries:
+        synthesis_prompt = f"""
+Based on these insights:
 {all_summaries}
 
-Write a one-paragraph cross-domain synthesis highlighting connecting themes.
+Write a one-paragraph cross-domain synthesis highlighting key themes.
 """
         synth = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": synth_prompt}]
+            messages=[{"role": "user", "content": synthesis_prompt}]
         )
         st.subheader("🧠 Cross-Domain Synthesis")
         st.write(synth.choices[0].message.content)
