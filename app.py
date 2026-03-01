@@ -1,187 +1,168 @@
 import streamlit as st
-import requests
-from datetime import datetime
+import feedparser
+import pandas as pd
 
-# ==============================
-# CONFIG
-# ==============================
+# ===============================
+# REGION-WISE PREMIUM ENERGY SOURCES
+# ===============================
 
-SERPAPI_KEY = "YOUR_SERPAPI_KEY"  # <-- Put your key here
-
-SEARCH_QUERIES = {
-    "Geopolitics": "latest geopolitics news war conflict sanctions energy impact",
-    "Energy": "oil gas LNG OPEC renewable energy supply disruption",
-    "India Macro": "India economy RBI rupee inflation infrastructure policy"
-}
-
-# ==============================
-# KEYWORD WEIGHTS
-# ==============================
-
-RISK_KEYWORDS = {
-    "war": 5,
-    "conflict": 4,
-    "sanctions": 4,
-    "crisis": 3,
-    "attack": 5,
-    "embargo": 4,
-    "strike": 3
+RSS_SOURCES = {
+    "India": [
+        "https://mercomindia.com/feed/",
+        "https://www.pv-tech.org/feed/",
+        "https://news.google.com/rss/search?q=India+renewable+energy+LNG+oil"
+    ],
+    "Asia": [
+        "https://asia.nikkei.com/rss/feed/nar",
+        "https://news.google.com/rss/search?q=Asia+LNG+oil+energy"
+    ],
+    "Middle East": [
+        "https://oilprice.com/rss/main",
+        "https://news.google.com/rss/search?q=Middle+East+OPEC+oil"
+    ],
+    "Global": [
+        "https://www.reuters.com/markets/energy/rss",
+        "https://news.google.com/rss/search?q=global+energy+oil+gas+LNG"
+    ]
 }
 
 ENERGY_KEYWORDS = {
     "oil": 3,
+    "crude": 3,
     "gas": 3,
     "lng": 4,
-    "refinery": 3,
-    "pipeline": 4,
     "opec": 5,
+    "pipeline": 4,
+    "refinery": 3,
+    "sanctions": 4,
+    "war": 5,
+    "conflict": 4,
     "renewable": 2,
-    "solar": 2
+    "solar": 2,
+    "wind": 2,
+    "hydrogen": 3,
+    "battery": 2
 }
 
-INDIA_KEYWORDS = {
-    "india": 5,
-    "rupee": 3,
-    "rbi": 4,
-    "sensex": 3,
-    "nifty": 3,
-    "inflation": 3,
-    "infrastructure": 2
-}
-
-# ==============================
+# ===============================
 # FUNCTIONS
-# ==============================
+# ===============================
 
-def serp_search(query):
-    url = "https://serpapi.com/search.json"
-    params = {
-        "engine": "google_news",
-        "q": query,
-        "api_key": SERPAPI_KEY
-    }
+def fetch_multiple_feeds(feed_list):
+    articles = []
+    seen_titles = set()
 
-    response = requests.get(url, params=params)
-    data = response.json()
+    for url in feed_list:
+        feed = feedparser.parse(url)
 
-    return data.get("news_results", [])
+        for entry in feed.entries[:10]:
+            title = entry.title
+
+            if title not in seen_titles:
+                seen_titles.add(title)
+                articles.append({
+                    "title": title,
+                    "link": entry.link,
+                    "summary": entry.get("summary", "")
+                })
+
+    return articles
 
 
-def compute_score(text, keyword_dict):
+def compute_score(text):
     score = 0
-    for word, weight in keyword_dict.items():
+    text = text.lower()
+
+    for word, weight in ENERGY_KEYWORDS.items():
         if word in text:
             score += weight
+
     return score
 
 
-def evaluate_article(article):
-    text = (article["title"] + " " + article.get("snippet", "")).lower()
-
-    geo_score = compute_score(text, RISK_KEYWORDS)
-    energy_score = compute_score(text, ENERGY_KEYWORDS)
-    india_score = compute_score(text, INDIA_KEYWORDS)
-
-    total_score = geo_score + energy_score + india_score
-
-    return {
-        "title": article["title"],
-        "link": article["link"],
-        "geo_score": geo_score,
-        "energy_score": energy_score,
-        "india_score": india_score,
-        "total_score": total_score
-    }
-
-
-def derive_market_bias(articles):
-    total_geo = sum(a["geo_score"] for a in articles)
-    total_energy = sum(a["energy_score"] for a in articles)
-    total_india = sum(a["india_score"] for a in articles)
-
-    if total_geo > 20:
-        return "🔴 RISK-OFF (Global Tension High)"
-    elif total_energy > 20:
-        return "🟢 ENERGY BULLISH"
-    elif total_india > 20:
-        return "🟡 INDIA MACRO ACTIVE"
+def classify(score):
+    if score >= 12:
+        return "🔥 HIGH IMPACT"
+    elif score >= 6:
+        return "⚠️ MEDIUM IMPACT"
+    elif score > 0:
+        return "ℹ️ LOW IMPACT"
     else:
-        return "⚪ NEUTRAL"
+        return ""
 
 
-# ==============================
+def derive_bias(scored_articles):
+    total = sum(a["score"] for a in scored_articles)
+
+    if total > 60:
+        return "🔴 HIGH ENERGY VOLATILITY"
+    elif total > 30:
+        return "🟡 MODERATE ENERGY MOVEMENT"
+    else:
+        return "⚪ STABLE CONDITIONS"
+
+
+# ===============================
 # STREAMLIT UI
-# ==============================
+# ===============================
 
-st.set_page_config(page_title="Energy Intelligence Terminal", layout="wide")
+st.set_page_config(layout="wide")
+st.title("🌍 Premium Energy Intelligence Terminal")
+st.markdown("High-Quality Publisher Feeds | Zero AI | Region-Wise")
 
-st.title("🌍 Energy & Geopolitical Intelligence Terminal")
-st.markdown("Zero-AI | Deterministic Macro Scoring Engine")
+region = st.selectbox("Select Region", list(RSS_SOURCES.keys()))
 
-run_button = st.button("Run Intelligence Scan")
+if st.button("Run Energy Scan"):
 
-if run_button:
+    with st.spinner("Scanning premium energy sources..."):
 
-    with st.spinner("Scanning global macro environment..."):
+        raw_articles = fetch_multiple_feeds(RSS_SOURCES[region])
 
-        collected_articles = []
+        if not raw_articles:
+            st.warning("No articles retrieved.")
+        else:
+            scored_articles = []
 
-        for domain, query in SEARCH_QUERIES.items():
-            results = serp_search(query)
+            for article in raw_articles:
+                text = article["title"] + " " + article["summary"]
+                score = compute_score(text)
 
-            for r in results:
-                collected_articles.append({
-                    "title": r.get("title", ""),
-                    "link": r.get("link", ""),
-                    "snippet": r.get("snippet", ""),
-                    "domain": domain
+                scored_articles.append({
+                    "title": article["title"],
+                    "link": article["link"],
+                    "score": score,
+                    "impact": classify(score)
                 })
 
-        if not collected_articles:
-            st.warning("No recent articles found.")
-        else:
-
-            scored_articles = [
-                evaluate_article(a) for a in collected_articles
-            ]
-
-            top_articles = sorted(
+            scored_articles = sorted(
                 scored_articles,
-                key=lambda x: x["total_score"],
+                key=lambda x: x["score"],
                 reverse=True
-            )[:10]
+            )
 
-            st.subheader("🔥 High Impact News")
+            st.subheader(f"Top Energy Developments – {region}")
 
-            for article in top_articles:
-                if article["total_score"] > 0:
+            for article in scored_articles:
+                if article["score"] > 0:
                     st.markdown(f"""
-### {article['title']}
-Score: **{article['total_score']}**
-- Geopolitical: {article['geo_score']}
-- Energy: {article['energy_score']}
-- India: {article['india_score']}
-[Read More]({article['link']})
+### {article['impact']} | Score: {article['score']}
+**{article['title']}**
+
+[Read Full Article]({article['link']})
 ---
 """)
 
-            bias = derive_market_bias(top_articles)
+            bias = derive_bias(scored_articles)
 
-            st.subheader("📈 Market Bias Engine")
+            st.subheader("Regional Energy Bias")
             st.markdown(f"### {bias}")
 
-            st.subheader("🎯 Trading Interpretation")
-
-            if "RISK-OFF" in bias:
-                st.write("• Consider Gold ETF")
-                st.write("• Reduce high-beta exposure")
-            elif "ENERGY BULLISH" in bias:
-                st.write("• Look at ONGC / Oil India")
-                st.write("• Monitor crude-sensitive stocks")
-            elif "INDIA MACRO" in bias:
-                st.write("• Infra / PSU themes")
-                st.write("• Nifty momentum watch")
+            if "HIGH" in bias:
+                st.write("• Expect price volatility in crude/LNG")
+                st.write("• Monitor OPEC & geopolitical triggers")
+            elif "MODERATE" in bias:
+                st.write("• Watch inventory reports & policy shifts")
             else:
-                st.write("• No strong macro signal today")
+                st.write("• No major structural catalyst detected")
 
     st.success("Scan Complete")
