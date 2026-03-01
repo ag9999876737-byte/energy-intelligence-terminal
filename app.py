@@ -1,187 +1,144 @@
 import streamlit as st
 import feedparser
-from datetime import datetime
 import nltk
-nltk.download("punkt", quiet=True)
-# ===================================
-# REGION-SPECIFIC PREMIUM SOURCES
-# ===================================
+from nltk.tokenize import sent_tokenize
+from datetime import datetime
 
+# Download tokenizer automatically (for Streamlit Cloud)
+nltk.download("punkt", quiet=True)
+
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(
+    page_title="Energy Intelligence Terminal",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ---------------- CUSTOM CSS ----------------
+st.markdown("""
+<style>
+body {
+    background-color: #0e1117;
+}
+.big-title {
+    font-size:38px !important;
+    font-weight:700;
+}
+.card {
+    padding:20px;
+    border-radius:12px;
+    background-color:#161b22;
+    color:white;
+    margin-bottom:20px;
+}
+.tag {
+    padding:4px 10px;
+    border-radius:20px;
+    font-size:12px;
+    font-weight:600;
+}
+.high { background-color:#ff4b4b; }
+.medium { background-color:#ffa500; }
+.low { background-color:#00c853; }
+.sidebar .sidebar-content {
+    background-color:#111;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------- RSS SOURCES ----------------
 RSS_SOURCES = {
-    "Southeast Asia": [
-        "https://asia.nikkei.com/rss/feed/nar",
-        "https://www.asiapower.com/rss.xml",
-        "https://news.google.com/rss/search?q=Southeast+Asia+energy+LNG+renewable"
+    "Southeast Asia Energy": [
+        "https://asian-power.com/rss.xml",
+        "https://www.pv-tech.org/feed/",
     ],
-    "Australia": [
+    "Australia Energy": [
         "https://reneweconomy.com.au/feed/",
-        "https://www.energyvoice.com/feed/",
-        "https://news.google.com/rss/search?q=Australia+energy+LNG+gas+renewable"
+        "https://www.energynewsbulletin.net/rss",
     ],
     "AI in Financial Modelling": [
-        "https://news.google.com/rss/search?q=AI+financial+modelling+automation",
-        "https://news.google.com/rss/search?q=AI+model+auditing+financial+models",
-        # Add specific Substack RSS here if known:
-        # Example: "https://yournewsletter.substack.com/feed"
+        "https://www.substack.com/feed",
+        "https://towardsdatascience.com/feed",
     ]
 }
 
-# ===================================
-# KEYWORD WEIGHT ENGINE
-# ===================================
+# ---------------- FUNCTIONS ----------------
 
-ENERGY_KEYWORDS = {
-    "oil": 3,
-    "gas": 3,
-    "lng": 4,
-    "opec": 5,
-    "pipeline": 4,
-    "renewable": 3,
-    "solar": 3,
-    "wind": 3,
-    "battery": 3,
-    "hydrogen": 4,
-    "sanctions": 4,
-    "war": 5,
-    "conflict": 4
-}
+def summarize(text, sentences=3):
+    sents = sent_tokenize(text)
+    return " ".join(sents[:sentences])
 
-AI_MODEL_KEYWORDS = {
-    "ai": 4,
-    "automation": 3,
-    "financial model": 5,
-    "model auditing": 5,
-    "copilot": 3,
-    "excel automation": 4,
-    "llm": 4,
-    "risk model": 3,
-    "audit automation": 4
-}
+def classify_impact(text):
+    text = text.lower()
+    if any(word in text for word in ["crisis", "surge", "ban", "war", "shock", "collapse"]):
+        return "HIGH"
+    elif any(word in text for word in ["growth", "increase", "policy", "investment"]):
+        return "MEDIUM"
+    else:
+        return "LOW"
 
-# ===================================
-# FUNCTIONS
-# ===================================
-
-def fetch_feeds(feed_list):
+def fetch_articles(category):
     articles = []
-    seen = set()
-
-    for url in feed_list:
+    for url in RSS_SOURCES[category]:
         feed = feedparser.parse(url)
-
-        for entry in feed.entries[:12]:
-            title = entry.title
-
-            if title not in seen:
-                seen.add(title)
-                articles.append({
-                    "title": title,
-                    "link": entry.link,
-                    "summary": entry.get("summary", "")
-                })
-
+        for entry in feed.entries[:5]:
+            articles.append({
+                "title": entry.title,
+                "summary": entry.summary if "summary" in entry else "",
+                "link": entry.link,
+                "published": entry.get("published", "N/A")
+            })
     return articles
 
+# ---------------- SIDEBAR ----------------
+st.sidebar.title("⚙ Intelligence Filters")
+category = st.sidebar.selectbox("Select Region / Theme", list(RSS_SOURCES.keys()))
+run_scan = st.sidebar.button("Run Intelligence Scan")
 
-def compute_score(text, region):
-    text = text.lower()
-    score = 0
+# ---------------- HEADER ----------------
+col1, col2, col3 = st.columns([4,1,1])
 
-    # Energy scoring
-    for word, weight in ENERGY_KEYWORDS.items():
-        if word in text:
-            score += weight
+with col1:
+    st.markdown('<p class="big-title">⚡ Energy Intelligence Terminal</p>', unsafe_allow_html=True)
 
-    # AI/Model scoring
-    if region == "AI in Financial Modelling":
-        for word, weight in AI_MODEL_KEYWORDS.items():
-            if word in text:
-                score += weight
+with col2:
+    st.metric("Region", category.split()[0])
 
-    return score
+with col3:
+    st.metric("Updated", datetime.now().strftime("%H:%M"))
 
+st.markdown("---")
 
-def classify(score):
-    if score >= 12:
-        return "🔥 HIGH IMPACT"
-    elif score >= 6:
-        return "⚠️ MEDIUM IMPACT"
-    elif score > 0:
-        return "ℹ️ LOW IMPACT"
+# ---------------- MAIN LOGIC ----------------
+if run_scan:
+
+    articles = fetch_articles(category)
+
+    if not articles:
+        st.warning("No articles found. Try again later.")
     else:
-        return ""
 
+        for article in articles:
+            summary = summarize(article["summary"])
+            impact = classify_impact(summary)
 
-def derive_bias(scored_articles, region):
-    total = sum(a["score"] for a in scored_articles)
+            if impact == "HIGH":
+                tag_class = "tag high"
+            elif impact == "MEDIUM":
+                tag_class = "tag medium"
+            else:
+                tag_class = "tag low"
 
-    if region == "AI in Financial Modelling":
-        if total > 40:
-            return "🚀 AI TRANSFORMATION ACCELERATING"
-        elif total > 20:
-            return "⚙️ Gradual AI Adoption"
-        else:
-            return "🧩 Limited AI Activity"
+            st.markdown(f"""
+            <div class="card">
+                <h3>{article['title']}</h3>
+                <p><i>{article['published']}</i></p>
+                <p>{summary}</p>
+                <span class="{tag_class}">{impact} IMPACT</span><br><br>
+                <a href="{article['link']}" target="_blank" style="color:#4ea1ff;">Read Full Article</a>
+            </div>
+            """, unsafe_allow_html=True)
 
-    else:
-        if total > 60:
-            return "🔴 STRONG ENERGY VOLATILITY"
-        elif total > 30:
-            return "🟡 MODERATE MOVEMENT"
-        else:
-            return "⚪ STABLE ENERGY CONDITIONS"
-
-
-# ===================================
-# STREAMLIT UI
-# ===================================
-
-st.set_page_config(layout="wide")
-st.title("🌏 Southeast Asia & Australia Energy + AI Intelligence Terminal")
-st.markdown("Premium Publisher Feeds | Region-Specific | Model Auditing AI Monitor")
-
-region = st.selectbox("Select Focus Area", list(RSS_SOURCES.keys()))
-
-if st.button("Run Intelligence Scan"):
-
-    with st.spinner("Scanning premium intelligence sources..."):
-
-        raw_articles = fetch_feeds(RSS_SOURCES[region])
-
-        if not raw_articles:
-            st.warning("No articles retrieved.")
-        else:
-
-            scored = []
-
-            for article in raw_articles:
-                text = article["title"] + " " + article["summary"]
-                score = compute_score(text, region)
-
-                scored.append({
-                    "title": article["title"],
-                    "link": article["link"],
-                    "score": score,
-                    "impact": classify(score)
-                })
-
-            scored = sorted(scored, key=lambda x: x["score"], reverse=True)
-
-            st.subheader(f"Top Developments – {region}")
-
-            for article in scored:
-                if article["score"] > 0:
-                    st.markdown(f"""
-### {article['impact']} | Score: {article['score']}
-**{article['title']}**
-
-[Read Full Article]({article['link']})
----
-""")
-
-            bias = derive_bias(scored, region)
-
-            st.subheader("Strategic Bias Indicator")
-            st.markdown(f"### {bias}")
-
-    st.success("Scan Complete")
+else:
+    st.info("Select region and click 'Run Intelligence Scan' to begin.")
