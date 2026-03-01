@@ -1,65 +1,78 @@
 import streamlit as st
 import feedparser
-import pandas as pd
+from datetime import datetime
 
-# ===============================
-# REGION-WISE PREMIUM ENERGY SOURCES
-# ===============================
+# ===================================
+# REGION-SPECIFIC PREMIUM SOURCES
+# ===================================
 
 RSS_SOURCES = {
-    "India": [
-        "https://mercomindia.com/feed/",
-        "https://www.pv-tech.org/feed/",
-        "https://news.google.com/rss/search?q=India+renewable+energy+LNG+oil"
-    ],
-    "Asia": [
+    "Southeast Asia": [
         "https://asia.nikkei.com/rss/feed/nar",
-        "https://news.google.com/rss/search?q=Asia+LNG+oil+energy"
+        "https://www.asiapower.com/rss.xml",
+        "https://news.google.com/rss/search?q=Southeast+Asia+energy+LNG+renewable"
     ],
-    "Middle East": [
-        "https://oilprice.com/rss/main",
-        "https://news.google.com/rss/search?q=Middle+East+OPEC+oil"
+    "Australia": [
+        "https://reneweconomy.com.au/feed/",
+        "https://www.energyvoice.com/feed/",
+        "https://news.google.com/rss/search?q=Australia+energy+LNG+gas+renewable"
     ],
-    "Global": [
-        "https://www.reuters.com/markets/energy/rss",
-        "https://news.google.com/rss/search?q=global+energy+oil+gas+LNG"
+    "AI in Financial Modelling": [
+        "https://news.google.com/rss/search?q=AI+financial+modelling+automation",
+        "https://news.google.com/rss/search?q=AI+model+auditing+financial+models",
+        # Add specific Substack RSS here if known:
+        # Example: "https://yournewsletter.substack.com/feed"
     ]
 }
 
+# ===================================
+# KEYWORD WEIGHT ENGINE
+# ===================================
+
 ENERGY_KEYWORDS = {
     "oil": 3,
-    "crude": 3,
     "gas": 3,
     "lng": 4,
     "opec": 5,
     "pipeline": 4,
-    "refinery": 3,
+    "renewable": 3,
+    "solar": 3,
+    "wind": 3,
+    "battery": 3,
+    "hydrogen": 4,
     "sanctions": 4,
     "war": 5,
-    "conflict": 4,
-    "renewable": 2,
-    "solar": 2,
-    "wind": 2,
-    "hydrogen": 3,
-    "battery": 2
+    "conflict": 4
 }
 
-# ===============================
-# FUNCTIONS
-# ===============================
+AI_MODEL_KEYWORDS = {
+    "ai": 4,
+    "automation": 3,
+    "financial model": 5,
+    "model auditing": 5,
+    "copilot": 3,
+    "excel automation": 4,
+    "llm": 4,
+    "risk model": 3,
+    "audit automation": 4
+}
 
-def fetch_multiple_feeds(feed_list):
+# ===================================
+# FUNCTIONS
+# ===================================
+
+def fetch_feeds(feed_list):
     articles = []
-    seen_titles = set()
+    seen = set()
 
     for url in feed_list:
         feed = feedparser.parse(url)
 
-        for entry in feed.entries[:10]:
+        for entry in feed.entries[:12]:
             title = entry.title
 
-            if title not in seen_titles:
-                seen_titles.add(title)
+            if title not in seen:
+                seen.add(title)
                 articles.append({
                     "title": title,
                     "link": entry.link,
@@ -69,13 +82,20 @@ def fetch_multiple_feeds(feed_list):
     return articles
 
 
-def compute_score(text):
-    score = 0
+def compute_score(text, region):
     text = text.lower()
+    score = 0
 
+    # Energy scoring
     for word, weight in ENERGY_KEYWORDS.items():
         if word in text:
             score += weight
+
+    # AI/Model scoring
+    if region == "AI in Financial Modelling":
+        for word, weight in AI_MODEL_KEYWORDS.items():
+            if word in text:
+                score += weight
 
     return score
 
@@ -91,58 +111,64 @@ def classify(score):
         return ""
 
 
-def derive_bias(scored_articles):
+def derive_bias(scored_articles, region):
     total = sum(a["score"] for a in scored_articles)
 
-    if total > 60:
-        return "🔴 HIGH ENERGY VOLATILITY"
-    elif total > 30:
-        return "🟡 MODERATE ENERGY MOVEMENT"
+    if region == "AI in Financial Modelling":
+        if total > 40:
+            return "🚀 AI TRANSFORMATION ACCELERATING"
+        elif total > 20:
+            return "⚙️ Gradual AI Adoption"
+        else:
+            return "🧩 Limited AI Activity"
+
     else:
-        return "⚪ STABLE CONDITIONS"
+        if total > 60:
+            return "🔴 STRONG ENERGY VOLATILITY"
+        elif total > 30:
+            return "🟡 MODERATE MOVEMENT"
+        else:
+            return "⚪ STABLE ENERGY CONDITIONS"
 
 
-# ===============================
+# ===================================
 # STREAMLIT UI
-# ===============================
+# ===================================
 
 st.set_page_config(layout="wide")
-st.title("🌍 Premium Energy Intelligence Terminal")
-st.markdown("High-Quality Publisher Feeds | Zero AI | Region-Wise")
+st.title("🌏 Southeast Asia & Australia Energy + AI Intelligence Terminal")
+st.markdown("Premium Publisher Feeds | Region-Specific | Model Auditing AI Monitor")
 
-region = st.selectbox("Select Region", list(RSS_SOURCES.keys()))
+region = st.selectbox("Select Focus Area", list(RSS_SOURCES.keys()))
 
-if st.button("Run Energy Scan"):
+if st.button("Run Intelligence Scan"):
 
-    with st.spinner("Scanning premium energy sources..."):
+    with st.spinner("Scanning premium intelligence sources..."):
 
-        raw_articles = fetch_multiple_feeds(RSS_SOURCES[region])
+        raw_articles = fetch_feeds(RSS_SOURCES[region])
 
         if not raw_articles:
             st.warning("No articles retrieved.")
         else:
-            scored_articles = []
+
+            scored = []
 
             for article in raw_articles:
                 text = article["title"] + " " + article["summary"]
-                score = compute_score(text)
+                score = compute_score(text, region)
 
-                scored_articles.append({
+                scored.append({
                     "title": article["title"],
                     "link": article["link"],
                     "score": score,
                     "impact": classify(score)
                 })
 
-            scored_articles = sorted(
-                scored_articles,
-                key=lambda x: x["score"],
-                reverse=True
-            )
+            scored = sorted(scored, key=lambda x: x["score"], reverse=True)
 
-            st.subheader(f"Top Energy Developments – {region}")
+            st.subheader(f"Top Developments – {region}")
 
-            for article in scored_articles:
+            for article in scored:
                 if article["score"] > 0:
                     st.markdown(f"""
 ### {article['impact']} | Score: {article['score']}
@@ -152,17 +178,9 @@ if st.button("Run Energy Scan"):
 ---
 """)
 
-            bias = derive_bias(scored_articles)
+            bias = derive_bias(scored, region)
 
-            st.subheader("Regional Energy Bias")
+            st.subheader("Strategic Bias Indicator")
             st.markdown(f"### {bias}")
-
-            if "HIGH" in bias:
-                st.write("• Expect price volatility in crude/LNG")
-                st.write("• Monitor OPEC & geopolitical triggers")
-            elif "MODERATE" in bias:
-                st.write("• Watch inventory reports & policy shifts")
-            else:
-                st.write("• No major structural catalyst detected")
 
     st.success("Scan Complete")
