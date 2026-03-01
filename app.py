@@ -2,13 +2,12 @@ import streamlit as st
 import feedparser
 import re
 from datetime import datetime, timedelta
-from collections import defaultdict
 
 # ---------------- PAGE CONFIG ----------------
 
 st.set_page_config(
-    page_title="Capital & Automation Positioning Radar",
-    page_icon="📊",
+    page_title="Free Institutional Deal Radar",
+    page_icon="💰",
     layout="wide"
 )
 
@@ -16,27 +15,37 @@ st.markdown("""
 <style>
 body { background-color:#0e1117; color:white; }
 .title { font-size:34px; font-weight:800; margin-bottom:20px; }
-.metric-box { padding:15px; border-radius:10px; background:#161b22; margin-bottom:15px; }
+.card { padding:18px; border-radius:10px; background:#161b22; margin:15px 0; }
+.money { color:#00c853; font-weight:700; }
 .section { margin-top:30px; font-size:22px; font-weight:700; }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- CURATED SOURCES ----------------
+# ---------------- HIGH-QUALITY FREE SOURCES ----------------
 
 RSS_FEEDS = [
     "https://www.reuters.com/markets/deals/rss",
-    "https://reneweconomy.com.au/feed/",
-    "https://www.asiapower.com/rss.xml",
     "https://asia.nikkei.com/rss/feed/nar",
-    "https://towardsdatascience.com/feed"
+    "https://reneweconomy.com.au/feed/",
+    "https://www.asiapower.com/rss.xml"
 ]
 
-# ---------------- KEYWORDS ----------------
+# ---------------- STRICT FILTERING RULES ----------------
 
-COUNTRIES = ["indonesia","vietnam","philippines","thailand","malaysia","australia"]
-TECH = ["lng","solar","wind","battery","bess","hydrogen","grid","transmission"]
-DEALS = ["deal","financing","investment","acquisition","equity","debt","refinancing"]
-AI_TERMS = ["ai","automation","machine learning","copilot","model audit","financial model"]
+COUNTRIES = [
+    "indonesia","vietnam","philippines",
+    "thailand","malaysia","singapore",
+    "australia"
+]
+
+DEAL_KEYWORDS = [
+    "financing","investment","acquisition",
+    "raised","secured","closed","deal",
+    "equity","debt","refinancing"
+]
+
+# Regex for money detection
+MONEY_PATTERN = r"(\$|usd|a\$|aud|sgd)\s?\d+[.,]?\d*\s?(billion|million|bn|m)?"
 
 # ---------------- FUNCTIONS ----------------
 
@@ -50,18 +59,24 @@ def is_recent(entry):
 def clean_text(text):
     return re.sub('<.*?>', '', text).lower()
 
-# ---------------- DATA STRUCTURES ----------------
+def extract_money(text):
+    matches = re.findall(MONEY_PATTERN, text, re.IGNORECASE)
+    return matches
 
-country_count = defaultdict(int)
-tech_count = defaultdict(int)
-deal_count = 0
-ai_count = 0
-total_articles = 0
+def contains_country(text):
+    return any(c in text for c in COUNTRIES)
 
-# ---------------- FETCH & PROCESS ----------------
+def contains_deal_keyword(text):
+    return any(k in text for k in DEAL_KEYWORDS)
 
-for feed_url in RSS_FEEDS:
-    feed = feedparser.parse(feed_url)
+# ---------------- SCAN ----------------
+
+st.markdown("<div class='title'>💰 Institutional Deal Radar (Last 7 Days)</div>", unsafe_allow_html=True)
+
+events = []
+
+for url in RSS_FEEDS:
+    feed = feedparser.parse(url)
 
     for entry in feed.entries:
 
@@ -69,81 +84,51 @@ for feed_url in RSS_FEEDS:
             continue
 
         text = clean_text(entry.title + " " + entry.get("summary",""))
-        total_articles += 1
 
-        # Country detection
-        for c in COUNTRIES:
-            if c in text:
-                country_count[c] += 1
+        if not contains_country(text):
+            continue
 
-        # Technology detection
-        for t in TECH:
-            if t in text:
-                tech_count[t] += 1
+        if not contains_deal_keyword(text):
+            continue
 
-        # Deal detection
-        if any(d in text for d in DEALS):
-            deal_count += 1
+        money = re.findall(MONEY_PATTERN, text, re.IGNORECASE)
 
-        # AI detection
-        if any(a in text for a in AI_TERMS):
-            ai_count += 1
+        if not money:
+            continue
 
-# ---------------- SCORING ----------------
+        events.append({
+            "title": entry.title,
+            "link": entry.link,
+            "summary": re.sub('<.*?>', '', entry.get("summary","")),
+            "published": entry.get("published","N/A")
+        })
 
-energy_momentum = sum(tech_count.values())
-regional_intensity = sum(country_count.values())
-ai_pressure = ai_count
-deal_flow_intensity = deal_count
+# ---------------- DISPLAY ----------------
 
-# ---------------- DASHBOARD ----------------
-
-st.markdown("<div class='title'>📊 Capital & Automation Positioning Radar (7 Days)</div>", unsafe_allow_html=True)
-
-col1, col2, col3, col4 = st.columns(4)
-
-col1.metric("Energy Momentum Score", energy_momentum)
-col2.metric("Regional Activity Signals", regional_intensity)
-col3.metric("Project Finance Deal Signals", deal_flow_intensity)
-col4.metric("AI Disruption Signals", ai_pressure)
-
-# ---------------- SECTION: REGION HEAT ----------------
-
-st.markdown("<div class='section'>🌏 Regional Heat Map</div>", unsafe_allow_html=True)
-
-if country_count:
-    for k, v in sorted(country_count.items(), key=lambda x: x[1], reverse=True):
-        st.write(f"{k.title()} : {v} signals")
+if not events:
+    st.warning("No high-quality capital events detected in last 7 days.")
 else:
-    st.write("No regional signals detected.")
 
-# ---------------- SECTION: TECHNOLOGY MOMENTUM ----------------
+    # Limit to strongest 5 events
+    events = events[:5]
 
-st.markdown("<div class='section'>⚡ Technology Momentum</div>", unsafe_allow_html=True)
+    for e in events:
 
-if tech_count:
-    for k, v in sorted(tech_count.items(), key=lambda x: x[1], reverse=True):
-        st.write(f"{k.upper()} : {v} mentions")
-else:
-    st.write("No technology signals detected.")
+        st.markdown(f"""
+        <div class="card">
+            <h3>{e['title']}</h3>
+            <p><i>{e['published']}</i></p>
+            <p>{e['summary'][:500]}...</p>
+            <br>
+            <a href="{e['link']}" target="_blank" style="color:#4ea1ff;">Read Full Article</a>
+        </div>
+        """, unsafe_allow_html=True)
 
-# ---------------- SECTION: STRATEGIC INTERPRETATION ----------------
+    st.markdown("<div class='section'>🧠 Positioning Bias</div>", unsafe_allow_html=True)
 
-st.markdown("<div class='section'>🧠 Strategic Bias</div>", unsafe_allow_html=True)
-
-if energy_momentum > 15:
-    st.write("Energy investment momentum accelerating.")
-elif energy_momentum > 7:
-    st.write("Moderate energy activity.")
-else:
-    st.write("Energy activity muted.")
-
-if deal_flow_intensity > 10:
-    st.write("Project finance cycle active.")
-else:
-    st.write("Deal flow stable/low.")
-
-if ai_pressure > 5:
-    st.write("AI automation pressure rising in finance.")
-else:
-    st.write("AI disruption signals limited this week.")
+    if len(events) >= 4:
+        st.write("Capital deployment active in region. Monitor sector overweight positioning.")
+    elif len(events) >= 2:
+        st.write("Moderate deal activity. Selective opportunities emerging.")
+    else:
+        st.write("Low visible capital flow. Defensive stance advisable.")
