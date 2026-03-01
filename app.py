@@ -1,11 +1,7 @@
 import streamlit as st
 import feedparser
-import nltk
-from nltk.tokenize import sent_tokenize
+import re
 from datetime import datetime
-
-# Download tokenizer automatically (for Streamlit Cloud)
-nltk.download("punkt", quiet=True)
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
@@ -41,9 +37,6 @@ body {
 .high { background-color:#ff4b4b; }
 .medium { background-color:#ffa500; }
 .low { background-color:#00c853; }
-.sidebar .sidebar-content {
-    background-color:#111;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -58,7 +51,6 @@ RSS_SOURCES = {
         "https://www.energynewsbulletin.net/rss",
     ],
     "AI in Financial Modelling": [
-        "https://www.substack.com/feed",
         "https://towardsdatascience.com/feed",
     ]
 }
@@ -66,8 +58,9 @@ RSS_SOURCES = {
 # ---------------- FUNCTIONS ----------------
 
 def summarize(text, sentences=3):
-    sents = sent_tokenize(text)
-    return " ".join(sents[:sentences])
+    clean_text = re.sub('<.*?>', '', text)  # remove HTML
+    split_sentences = re.split(r'(?<=[.!?]) +', clean_text)
+    return " ".join(split_sentences[:sentences])
 
 def classify_impact(text):
     text = text.lower()
@@ -118,17 +111,13 @@ if run_scan:
     if not articles:
         st.warning("No articles found. Try again later.")
     else:
-
         for article in articles:
             summary = summarize(article["summary"])
             impact = classify_impact(summary)
 
-            if impact == "HIGH":
-                tag_class = "tag high"
-            elif impact == "MEDIUM":
-                tag_class = "tag medium"
-            else:
-                tag_class = "tag low"
+            tag_class = "tag high" if impact == "HIGH" else \
+                        "tag medium" if impact == "MEDIUM" else \
+                        "tag low"
 
             st.markdown(f"""
             <div class="card">
