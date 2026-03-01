@@ -40,7 +40,7 @@ def serp_search(query):
         "engine": "google",
         "q": f"{query} {region} last {days} days",
         "api_key": SERPAPI_KEY,
-        "num": 5
+        "num": 3
     }
     resp = requests.get("https://serpapi.com/search", params=params)
     resp.raise_for_status()
