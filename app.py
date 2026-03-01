@@ -1,96 +1,187 @@
 import streamlit as st
 import requests
-from openai import OpenAI
-import json
+from datetime import datetime
 
-OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-SERPAPI_KEY = st.secrets["SERPAPI_KEY"]
+# ==============================
+# CONFIG
+# ==============================
 
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-st.set_page_config(page_title="Energy Intelligence Terminal", layout="wide")
-st.title("📊 Energy & Project Finance Intelligence Terminal")
-
-# Sidebar
-st.sidebar.header("Filters")
-
-region = st.sidebar.selectbox(
-    "Select Region",
-    ["Global", "Americas", "EMEA", "Southeast Asia", "Australia/NZ"]
-)
-
-domains = st.sidebar.multiselect(
-    "Select Domains",
-    ["Renewable Energy", "Energy Policy", "Project Finance", "Model Auditing"],
-    default=["Renewable Energy", "Energy Policy", "Project Finance", "Model Auditing"]
-)
-
-days = st.sidebar.slider("Last Days to Search", 7, 90, 30)
-run_button = st.sidebar.button("Generate Intelligence")
+SERPAPI_KEY = "YOUR_SERPAPI_KEY"  # <-- Put your key here
 
 SEARCH_QUERIES = {
-    "Renewable Energy": "renewable energy capacity technology project",
-    "Energy Policy": "energy policy regulation government target",
-    "Project Finance": "energy project finance deal funding debt equity",
-    "Model Auditing": "financial model audit project finance standard"
+    "Geopolitics": "latest geopolitics news war conflict sanctions energy impact",
+    "Energy": "oil gas LNG OPEC renewable energy supply disruption",
+    "India Macro": "India economy RBI rupee inflation infrastructure policy"
 }
 
+# ==============================
+# KEYWORD WEIGHTS
+# ==============================
+
+RISK_KEYWORDS = {
+    "war": 5,
+    "conflict": 4,
+    "sanctions": 4,
+    "crisis": 3,
+    "attack": 5,
+    "embargo": 4,
+    "strike": 3
+}
+
+ENERGY_KEYWORDS = {
+    "oil": 3,
+    "gas": 3,
+    "lng": 4,
+    "refinery": 3,
+    "pipeline": 4,
+    "opec": 5,
+    "renewable": 2,
+    "solar": 2
+}
+
+INDIA_KEYWORDS = {
+    "india": 5,
+    "rupee": 3,
+    "rbi": 4,
+    "sensex": 3,
+    "nifty": 3,
+    "inflation": 3,
+    "infrastructure": 2
+}
+
+# ==============================
+# FUNCTIONS
+# ==============================
+
 def serp_search(query):
+    url = "https://serpapi.com/search.json"
     params = {
-        "engine": "google",
-        "q": f"{query} {region} last {days} days",
-        "api_key": SERPAPI_KEY,
-        "num": 3
+        "engine": "google_news",
+        "q": query,
+        "api_key": SERPAPI_KEY
     }
-    resp = requests.get("https://serpapi.com/search", params=params)
-    resp.raise_for_status()
-    return resp.json().get("organic_results", [])
+
+    response = requests.get(url, params=params)
+    data = response.json()
+
+    return data.get("news_results", [])
+
+
+def compute_score(text, keyword_dict):
+    score = 0
+    for word, weight in keyword_dict.items():
+        if word in text:
+            score += weight
+    return score
+
+
+def evaluate_article(article):
+    text = (article["title"] + " " + article.get("snippet", "")).lower()
+
+    geo_score = compute_score(text, RISK_KEYWORDS)
+    energy_score = compute_score(text, ENERGY_KEYWORDS)
+    india_score = compute_score(text, INDIA_KEYWORDS)
+
+    total_score = geo_score + energy_score + india_score
+
+    return {
+        "title": article["title"],
+        "link": article["link"],
+        "geo_score": geo_score,
+        "energy_score": energy_score,
+        "india_score": india_score,
+        "total_score": total_score
+    }
+
+
+def derive_market_bias(articles):
+    total_geo = sum(a["geo_score"] for a in articles)
+    total_energy = sum(a["energy_score"] for a in articles)
+    total_india = sum(a["india_score"] for a in articles)
+
+    if total_geo > 20:
+        return "🔴 RISK-OFF (Global Tension High)"
+    elif total_energy > 20:
+        return "🟢 ENERGY BULLISH"
+    elif total_india > 20:
+        return "🟡 INDIA MACRO ACTIVE"
+    else:
+        return "⚪ NEUTRAL"
+
+
+# ==============================
+# STREAMLIT UI
+# ==============================
+
+st.set_page_config(page_title="Energy Intelligence Terminal", layout="wide")
+
+st.title("🌍 Energy & Geopolitical Intelligence Terminal")
+st.markdown("Zero-AI | Deterministic Macro Scoring Engine")
+
+run_button = st.button("Run Intelligence Scan")
 
 if run_button:
-    st.spinner("🔎 Searching global intelligence...")
 
-    collected_articles = []
+    with st.spinner("Scanning global macro environment..."):
 
-    for dom in domains:
-        results = serp_search(SEARCH_QUERIES[dom])
-        for r in results:
-            collected_articles.append({
-                "domain": dom,
-                "title": r.get("title", ""),
-                "snippet": r.get("snippet", ""),
-                "url": r.get("link", "")
-            })
+        collected_articles = []
 
-    if not collected_articles:
-        st.warning("No articles found.")
-    else:
+        for domain, query in SEARCH_QUERIES.items():
+            results = serp_search(query)
 
-        prompt = f"""
-You are a senior energy intelligence analyst.
+            for r in results:
+                collected_articles.append({
+                    "title": r.get("title", ""),
+                    "link": r.get("link", ""),
+                    "snippet": r.get("snippet", ""),
+                    "domain": domain
+                })
 
-From the following articles (last {days} days, region: {region}):
+        if not collected_articles:
+            st.warning("No recent articles found.")
+        else:
 
-1) Keep only credible, recent sources.
-2) Summarize 3–5 highlights per domain.
-3) Use format:
+            scored_articles = [
+                evaluate_article(a) for a in collected_articles
+            ]
 
-Domain:
-Headline — one sentence
-What happened — 2–3 sentences
-Why it matters — 1–2 sentences
-Source — URL
+            top_articles = sorted(
+                scored_articles,
+                key=lambda x: x["total_score"],
+                reverse=True
+            )[:10]
 
-Then write a cross-domain synthesis paragraph.
+            st.subheader("🔥 High Impact News")
 
-Articles:
-{json.dumps(collected_articles)}
-"""
+            for article in top_articles:
+                if article["total_score"] > 0:
+                    st.markdown(f"""
+### {article['title']}
+Score: **{article['total_score']}**
+- Geopolitical: {article['geo_score']}
+- Energy: {article['energy_score']}
+- India: {article['india_score']}
+[Read More]({article['link']})
+---
+""")
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
-        )
+            bias = derive_market_bias(top_articles)
 
-        output = response.choices[0].message.content
-        st.markdown(output)
+            st.subheader("📈 Market Bias Engine")
+            st.markdown(f"### {bias}")
+
+            st.subheader("🎯 Trading Interpretation")
+
+            if "RISK-OFF" in bias:
+                st.write("• Consider Gold ETF")
+                st.write("• Reduce high-beta exposure")
+            elif "ENERGY BULLISH" in bias:
+                st.write("• Look at ONGC / Oil India")
+                st.write("• Monitor crude-sensitive stocks")
+            elif "INDIA MACRO" in bias:
+                st.write("• Infra / PSU themes")
+                st.write("• Nifty momentum watch")
+            else:
+                st.write("• No strong macro signal today")
+
+    st.success("Scan Complete")
