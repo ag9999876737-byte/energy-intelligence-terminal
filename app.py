@@ -1,8 +1,8 @@
 import streamlit as st
 import requests
 from openai import OpenAI
+import json
 
-# Load keys
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 SERPAPI_KEY = st.secrets["SERPAPI_KEY"]
 
@@ -26,7 +26,6 @@ domains = st.sidebar.multiselect(
 )
 
 days = st.sidebar.slider("Last Days to Search", 7, 90, 30)
-
 run_button = st.sidebar.button("Generate Intelligence")
 
 SEARCH_QUERIES = {
@@ -45,62 +44,53 @@ def serp_search(query):
     }
     resp = requests.get("https://serpapi.com/search", params=params)
     resp.raise_for_status()
-    results = resp.json().get("organic_results", [])
-    return results
-
-def summarize_with_ai(title, snippet, url, domain):
-    prompt = f"""
-You are a senior energy intelligence analyst.
-
-Only include if within last {days} days and highly credible.
-
-Output format:
-
-Headline — one sentence
-What happened — 2-3 sentences
-Why it matters — 1-2 sentences
-Source — {url}
-
-Article Title: {title}
-Snippet: {snippet}
-Domain Focus: {domain}
-"""
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
+    return resp.json().get("organic_results", [])
 
 if run_button:
     st.spinner("🔎 Searching global intelligence...")
-    
-    all_summaries = []
+
+    collected_articles = []
 
     for dom in domains:
-        st.subheader(f"📌 {dom}")
         results = serp_search(SEARCH_QUERIES[dom])
-
         for r in results:
-            title = r.get("title", "")
-            snippet = r.get("snippet", "")
-            url = r.get("link", "")
+            collected_articles.append({
+                "domain": dom,
+                "title": r.get("title", ""),
+                "snippet": r.get("snippet", ""),
+                "url": r.get("link", "")
+            })
 
-            summary = summarize_with_ai(title, snippet, url, dom)
+    if not collected_articles:
+        st.warning("No articles found.")
+    else:
 
-            with st.expander(title):
-                st.write(summary)
-                all_summaries.append(summary)
+        prompt = f"""
+You are a senior energy intelligence analyst.
 
-    if all_summaries:
-        synthesis_prompt = f"""
-Based on these insights:
-{all_summaries}
+From the following articles (last {days} days, region: {region}):
 
-Write a one-paragraph cross-domain synthesis highlighting key themes.
+1) Keep only credible, recent sources.
+2) Summarize 3–5 highlights per domain.
+3) Use format:
+
+Domain:
+Headline — one sentence
+What happened — 2–3 sentences
+Why it matters — 1–2 sentences
+Source — URL
+
+Then write a cross-domain synthesis paragraph.
+
+Articles:
+{json.dumps(collected_articles)}
 """
-        synth = client.chat.completions.create(
+
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": synthesis_prompt}]
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3
         )
-        st.subheader("🧠 Cross-Domain Synthesis")
-        st.write(synth.choices[0].message.content)
+
+        output = response.choices[0].message.content
+        st.markdown(output)
