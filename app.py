@@ -1,7 +1,8 @@
 import streamlit as st
 import feedparser
 from datetime import datetime
-
+import nltk
+nltk.download("punkt", quiet=True)
 # ===================================
 # REGION-SPECIFIC PREMIUM SOURCES
 # ===================================
