@@ -2,138 +2,148 @@ import streamlit as st
 import feedparser
 import re
 from datetime import datetime, timedelta
+from collections import defaultdict
 
-# ------------------------
-# PAGE CONFIG
-# ------------------------
+# ---------------- PAGE CONFIG ----------------
 
 st.set_page_config(
-    page_title="Energy & Finance Intelligence Terminal",
-    page_icon="⚡",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="Capital & Automation Positioning Radar",
+    page_icon="📊",
+    layout="wide"
 )
 
 st.markdown("""
 <style>
 body { background-color:#0e1117; color:white; }
-.title { font-size:36px; font-weight:800; margin-bottom:10px; }
-.card { padding:18px; border-radius:10px; background:#161b22; margin:12px 0; }
-.tag-high { color:#ff4b4b;font-weight:700;}
-.tag-med { color:#ffa500;font-weight:700;}
-.tag-low { color:#00c853;font-weight:700;}
+.title { font-size:34px; font-weight:800; margin-bottom:20px; }
+.metric-box { padding:15px; border-radius:10px; background:#161b22; margin-bottom:15px; }
+.section { margin-top:30px; font-size:22px; font-weight:700; }
 </style>
 """, unsafe_allow_html=True)
 
-# ------------------------
-# CURATED RSS SOURCES
-# ------------------------
+# ---------------- CURATED SOURCES ----------------
 
-RSS_SOURCES = {
-    "SE Asia Energy": [
-       "https://asia.nikkei.com/rss/feed/nar",
-       "https://www.asiapower.com/rss.xml",
-       "https://www.pv-tech.org/feed/",
-       "https://www.mercomindia.com/feed/"
-    ],
-    "Australia Energy": [
-       "https://reneweconomy.com.au/feed/",
-       "https://www.energynewsbulletin.net/rss"
-    ],
-    "Project Finance Deals": [
-       "https://www.reuters.com/markets/deals/rss",
-       "https://www.ft.com/rss/world?edition=uk"
-    ],
-    "AI & Financial Modelling": [
-       "https://towardsdatascience.com/feed"
-       # Add additional Substack RSS here
-    ]
-}
+RSS_FEEDS = [
+    "https://www.reuters.com/markets/deals/rss",
+    "https://reneweconomy.com.au/feed/",
+    "https://www.asiapower.com/rss.xml",
+    "https://asia.nikkei.com/rss/feed/nar",
+    "https://towardsdatascience.com/feed"
+]
 
-DOMAIN_KEYWORDS = {
-    "SE Asia Energy": ["renewable","capacity","oil","gas","lng","energy","power","pipeline"],
-    "Australia Energy": ["renewable","solar","wind","energy","gas","au","australia","lng"],
-    "Project Finance Deals": ["deal","investment","project finance","financing","acquisition","funding","equity","debt"],
-    "AI & Financial Modelling": ["ai","automation","model audit","financial model","machine learning","copilot"]
-}
+# ---------------- KEYWORDS ----------------
 
-# ------------------------
-# UTILITY FUNCTIONS
-# ------------------------
+COUNTRIES = ["indonesia","vietnam","philippines","thailand","malaysia","australia"]
+TECH = ["lng","solar","wind","battery","bess","hydrogen","grid","transmission"]
+DEALS = ["deal","financing","investment","acquisition","equity","debt","refinancing"]
+AI_TERMS = ["ai","automation","machine learning","copilot","model audit","financial model"]
 
-def filter_recent(entry):
+# ---------------- FUNCTIONS ----------------
+
+def is_recent(entry):
     try:
         published = datetime(*entry.published_parsed[:6])
+        return published > (datetime.now() - timedelta(days=7))
     except:
         return False
-    return published > (datetime.now() - timedelta(hours=72))
 
-def domain_relevant(title, summary, keywords):
-    text = (title + " " + summary).lower()
-    return any(k.lower() in text for k in keywords)
+def clean_text(text):
+    return re.sub('<.*?>', '', text).lower()
 
-def extractive_summary(text, max_sentences=2):
-    clean = re.sub('<.*?>','',text)
-    parts = re.split(r'(?<=[.!?]) +', clean)
-    return " ".join(parts[:max_sentences])
+# ---------------- DATA STRUCTURES ----------------
 
-def classify_score(text):
-    text = text.lower()
-    if any(x in text for x in ["crisis","surge","shock","ban","collapse","deal"]):
-        return "HIGH"
-    elif any(x in text for x in ["growth","policy","agreement","investment","framework"]):
-        return "MEDIUM"
-    else:
-        return "LOW"
+country_count = defaultdict(int)
+tech_count = defaultdict(int)
+deal_count = 0
+ai_count = 0
+total_articles = 0
 
-# ------------------------
-# UI - Sidebar
-# ------------------------
+# ---------------- FETCH & PROCESS ----------------
 
-st.sidebar.title("Select Focus Area")
-category = st.sidebar.selectbox("Choose category", list(RSS_SOURCES.keys()))
-run_button = st.sidebar.button("Scan Latest")
+for feed_url in RSS_FEEDS:
+    feed = feedparser.parse(feed_url)
 
-st.markdown(f"<div class='title'>⚡ {category} Updates (Last 72h)</div>", unsafe_allow_html=True)
+    for entry in feed.entries:
 
-# ------------------------
-# MAIN SCAN
-# ------------------------
+        if not is_recent(entry):
+            continue
 
-if run_button:
+        text = clean_text(entry.title + " " + entry.get("summary",""))
+        total_articles += 1
 
-    articles = []
-    for url in RSS_SOURCES[category]:
-        feed = feedparser.parse(url)
-        for entry in feed.entries:
-            if filter_recent(entry) and domain_relevant(entry.title, entry.get("summary",""), DOMAIN_KEYWORDS[category]):
-                articles.append(entry)
+        # Country detection
+        for c in COUNTRIES:
+            if c in text:
+                country_count[c] += 1
 
-    if not articles:
-        st.warning("No high-quality recent articles found in this category.")
-    else:
+        # Technology detection
+        for t in TECH:
+            if t in text:
+                tech_count[t] += 1
 
-        for entry in articles:
+        # Deal detection
+        if any(d in text for d in DEALS):
+            deal_count += 1
 
-            title = entry.title
-            link = entry.link
-            summary_raw = entry.get("summary","")
-            summary = extractive_summary(summary_raw,2)
-            impact = classify_score(summary_raw)
+        # AI detection
+        if any(a in text for a in AI_TERMS):
+            ai_count += 1
 
-            tag_class = "tag-high" if impact=="HIGH" else "tag-med" if impact=="MEDIUM" else "tag-low"
+# ---------------- SCORING ----------------
 
-            published = entry.get("published","N/A")
+energy_momentum = sum(tech_count.values())
+regional_intensity = sum(country_count.values())
+ai_pressure = ai_count
+deal_flow_intensity = deal_count
 
-            st.markdown(f"""
-            <div class="card">
-                <h3>{title}</h3>
-                <p><i>{published}</i></p>
-                <p>{summary}</p>
-                <span class="{tag_class}">{impact} IMPACT</span><br><br>
-                <a href="{link}" target="_blank" style="color:#4ea1ff;">Read Full Article</a>
-            </div>
-            """, unsafe_allow_html=True)
+# ---------------- DASHBOARD ----------------
 
+st.markdown("<div class='title'>📊 Capital & Automation Positioning Radar (7 Days)</div>", unsafe_allow_html=True)
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric("Energy Momentum Score", energy_momentum)
+col2.metric("Regional Activity Signals", regional_intensity)
+col3.metric("Project Finance Deal Signals", deal_flow_intensity)
+col4.metric("AI Disruption Signals", ai_pressure)
+
+# ---------------- SECTION: REGION HEAT ----------------
+
+st.markdown("<div class='section'>🌏 Regional Heat Map</div>", unsafe_allow_html=True)
+
+if country_count:
+    for k, v in sorted(country_count.items(), key=lambda x: x[1], reverse=True):
+        st.write(f"{k.title()} : {v} signals")
 else:
-    st.info("Choose a category and click ‘Scan Latest’")
+    st.write("No regional signals detected.")
+
+# ---------------- SECTION: TECHNOLOGY MOMENTUM ----------------
+
+st.markdown("<div class='section'>⚡ Technology Momentum</div>", unsafe_allow_html=True)
+
+if tech_count:
+    for k, v in sorted(tech_count.items(), key=lambda x: x[1], reverse=True):
+        st.write(f"{k.upper()} : {v} mentions")
+else:
+    st.write("No technology signals detected.")
+
+# ---------------- SECTION: STRATEGIC INTERPRETATION ----------------
+
+st.markdown("<div class='section'>🧠 Strategic Bias</div>", unsafe_allow_html=True)
+
+if energy_momentum > 15:
+    st.write("Energy investment momentum accelerating.")
+elif energy_momentum > 7:
+    st.write("Moderate energy activity.")
+else:
+    st.write("Energy activity muted.")
+
+if deal_flow_intensity > 10:
+    st.write("Project finance cycle active.")
+else:
+    st.write("Deal flow stable/low.")
+
+if ai_pressure > 5:
+    st.write("AI automation pressure rising in finance.")
+else:
+    st.write("AI disruption signals limited this week.")
