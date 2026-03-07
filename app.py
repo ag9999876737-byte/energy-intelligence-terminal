@@ -1,34 +1,33 @@
 import streamlit as st
 import feedparser
-from datetime import datetime, timezone
 import re
-import pandas as pd
+from datetime import datetime, timezone
 
 st.set_page_config(page_title="Institutional Deal Radar", layout="wide")
 
-# -----------------------------
+# -------------------------
 # RSS SOURCES
-# -----------------------------
+# -------------------------
 
 RSS_FEEDS = [
 
-("Google Energy",
+("Energy",
 "https://news.google.com/rss/search?q=energy+investment+asia&hl=en-US&gl=US&ceid=US:en"),
 
-("Google Infrastructure",
+("Infrastructure",
 "https://news.google.com/rss/search?q=infrastructure+investment+asia&hl=en-US&gl=US&ceid=US:en"),
 
-("Google Renewable",
+("Renewables",
 "https://news.google.com/rss/search?q=renewable+energy+investment+asia&hl=en-US&gl=US&ceid=US:en"),
 
-("Google Australia Energy",
+("Australia Energy",
 "https://news.google.com/rss/search?q=energy+investment+australia&hl=en-US&gl=US&ceid=US:en")
 
 ]
 
-# -----------------------------
+# -------------------------
 # COUNTRY KEYWORDS
-# -----------------------------
+# -------------------------
 
 COUNTRY_MAP = {
 
@@ -42,9 +41,9 @@ COUNTRY_MAP = {
 
 }
 
-# -----------------------------
-# SECTOR KEYWORDS
-# -----------------------------
+# -------------------------
+# SECTORS
+# -------------------------
 
 SECTOR_MAP = {
 
@@ -52,38 +51,34 @@ SECTOR_MAP = {
 "wind":"🌬️ Wind",
 "battery":"🔋 Storage",
 "hydrogen":"🧪 Hydrogen",
-"gas":"🔥 Gas / LNG",
-"lng":"🔥 Gas / LNG",
+"lng":"🔥 LNG",
+"gas":"🔥 LNG",
 "transmission":"⚡ Grid",
 "power":"⚡ Power",
-"infrastructure":"🏗️ Infrastructure",
 "port":"🚢 Ports",
 "rail":"🚆 Rail",
-"airport":"✈️ Airport"
+"airport":"✈️ Airport",
+"infrastructure":"🏗️ Infrastructure"
 
 }
 
-# -----------------------------
-# DEAL KEYWORDS
-# -----------------------------
+# -------------------------
+# DEAL WORDS
+# -------------------------
 
 DEAL_WORDS = [
 "investment",
 "financing",
 "funding",
-"deal",
 "acquisition",
-"project finance",
-"loan",
-"equity",
+"deal",
 "stake",
-"billion",
-"million"
+"project finance"
 ]
 
-# -----------------------------
+# -------------------------
 # HELPERS
-# -----------------------------
+# -------------------------
 
 def clean(text):
 
@@ -107,14 +102,12 @@ def is_recent(entry, days=10):
 
 def detect_country(text):
 
-    results = []
-
     for k,v in COUNTRY_MAP.items():
 
         if k in text:
-            results.append(v)
+            return v
 
-    return results
+    return "🌏 Regional"
 
 
 def detect_sector(text):
@@ -127,164 +120,138 @@ def detect_sector(text):
     return "🔹 General"
 
 
-def deal_score(text):
-
-    score = 0
-
-    for word in DEAL_WORDS:
-
-        if word in text:
-            score += 1
-
-    return score
-
-
 def extract_money(text):
 
     match = re.search(r'(\$?\d+\.?\d*\s?(billion|million|bn|m))', text)
 
     if match:
+        return match.group(1)
 
-        value = match.group(1)
-
-        if "b" in value.lower():
-            size = 3
-        elif "m" in value.lower():
-            size = 2
-        else:
-            size = 1
-
-        return value, size
-
-    return None, 0
+    return ""
 
 
-# -----------------------------
-# FETCH FEEDS
-# -----------------------------
+# -------------------------
+# FETCH NEWS
+# -------------------------
 
-def fetch_feed(source):
+def fetch_deals():
 
-    name, url = source
     deals = []
 
-    try:
+    for name,url in RSS_FEEDS:
 
         feed = feedparser.parse(url)
 
         for entry in feed.entries:
 
-            title = clean(entry.get("title",""))
-            summary = clean(entry.get("summary",""))
+            title = clean(entry.title)
+            summary = clean(entry.summary)
 
-            text = (title + " " + summary).lower()
+            text = (title + summary).lower()
 
             if not is_recent(entry):
                 continue
 
-            countries = detect_country(text)
-            sector = detect_sector(text)
-
-            if not countries and sector == "🔹 General":
+            if not any(word in text for word in DEAL_WORDS):
                 continue
-
-            money, size = extract_money(text)
 
             deals.append({
 
-                "title": title,
-                "summary": summary[:300],
-                "link": entry.get("link","#"),
-                "source": name,
-                "countries": countries if countries else ["🌏 Regional"],
-                "sector": sector,
-                "money": money if money else "",
-                "size": size,
-                "score": deal_score(text)
+                "title":title,
+                "summary":summary[:300],
+                "link":entry.link,
+                "country":detect_country(text),
+                "sector":detect_sector(text),
+                "money":extract_money(text),
+                "source":name
 
             })
-
-    except Exception as e:
-
-        print("Feed error:", name)
 
     return deals
 
 
-# -----------------------------
-# LOAD ALL DEALS
-# -----------------------------
+# -------------------------
+# LOAD DATA
+# -------------------------
 
-def load_deals():
+deals = fetch_deals()
 
-    all_deals = []
-
-    for source in RSS_FEEDS:
-
-        deals = fetch_feed(source)
-        all_deals.extend(deals)
-
-    all_deals.sort(key=lambda x:(x["score"],x["size"]),reverse=True)
-
-    return all_deals
-
-
-# -----------------------------
-# UI
-# -----------------------------
+# -------------------------
+# HEADER
+# -------------------------
 
 st.title("💰 Institutional Deal Radar")
 
-st.caption("Infrastructure & Energy Deal Flow — Southeast Asia & Australia")
+st.caption(
+"Infrastructure & Energy Deal Flow — Southeast Asia & Australia"
+)
 
-deals = load_deals()
-
-# -----------------------------
+# -------------------------
 # METRICS
-# -----------------------------
+# -------------------------
 
 col1,col2,col3 = st.columns(3)
 
-total_deals = len(deals)
+col1.metric("Deals Detected", len(deals))
 
-large_deals = len([d for d in deals if d["size"]>=2])
+large = len([d for d in deals if "billion" in d["money"].lower()])
+col2.metric("Large Deals", large)
 
-value_estimate = sum([500 if d["size"]==3 else 50 for d in deals])
-
-col1.metric("Deals", total_deals)
-
-col2.metric("Total Value", f"${value_estimate}M")
-
-col3.metric("Large Deals", large_deals)
+countries = len(set([d["country"] for d in deals]))
+col3.metric("Markets Active", countries)
 
 st.divider()
 
-# -----------------------------
-# DEAL TABLE
-# -----------------------------
+# -------------------------
+# FILTERS
+# -------------------------
 
-rows = []
+country_filter = st.selectbox(
+"Filter by Country",
+["All"] + sorted(list(set([d["country"] for d in deals])))
+)
+
+sector_filter = st.selectbox(
+"Filter by Sector",
+["All"] + sorted(list(set([d["sector"] for d in deals])))
+)
+
+# -------------------------
+# APPLY FILTER
+# -------------------------
+
+filtered = []
 
 for d in deals:
 
-    rows.append({
+    if country_filter != "All" and d["country"] != country_filter:
+        continue
 
-    "Country": ", ".join(d["countries"]),
-    "Sector": d["sector"],
-    "Deal Size": d["money"],
-    "Headline": d["title"],
-    "Source": d["source"],
-    "Link": d["link"]
+    if sector_filter != "All" and d["sector"] != sector_filter:
+        continue
 
-    })
+    filtered.append(d)
 
-df = pd.DataFrame(rows)
+# -------------------------
+# DEAL CARDS
+# -------------------------
 
-st.dataframe(
-    df,
-    use_container_width=True
-)
+for deal in filtered:
 
-st.caption(
-"Sources: Google News | Auto filtered for energy & infrastructure deals | Updated live"
-)
+    with st.container():
+
+        st.markdown(
+        f"""
+        ### {deal['title']}
+
+        **{deal['country']} | {deal['sector']}**
+
+        {deal['summary']}
+
+        **Deal Size:** {deal['money'] if deal['money'] else "Undisclosed"}
+
+        🔗 [Read article]({deal['link']})
+
+        ---
+        """
+        )
