@@ -11,12 +11,12 @@ from datetime import datetime, timedelta
 # ─────────────────────────────────────────────
 
 st.set_page_config(
-page_title=“Institutional Deal Radar”,
-page_icon=“💰”,
-layout=“wide”
+page_title="Institutional Deal Radar",
+page_icon="💰”,
+layout="wide"
 )
 
-st.markdown(”””
+st.markdown("""
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
