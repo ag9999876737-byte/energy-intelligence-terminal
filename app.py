@@ -167,18 +167,18 @@ html, body, [class*="css"] {
 # ─────────────────────────────────────────────
 
 RSS_FEEDS = [
-# Tier 1 — Confirmed open, SE Asia / Australia deal coverage
+# Tier 1 – Confirmed open, SE Asia / Australia deal coverage
 (“Nikkei Asia”,             “https://asia.nikkei.com/rss/feed/nar”),
 (“RenewEconomy”,            “https://reneweconomy.com.au/feed/”),
 (“Reuters Business”,        “https://feeds.reuters.com/reuters/businessNews”),
 (“Bangkok Post Business”,   “https://www.bangkokpost.com/rss/data/business.xml”),
 (“Vietnam Investment Rev”,  “https://vir.com.vn/rss/finance.rss”),
 (“Eco-Business”,            “https://www.eco-business.com/rss/news/”),
-# Tier 2 — Broader M&A press wires
+# Tier 2 – Broader M&A press wires
 (“GlobeNewswire M&A”,       “https://globenewswire.com/RssFeed/subjectcode/M109”),
 (“PR Newswire Finance”,     “https://www.prnewswire.com/rss/financial-news.rss”),
 (“Business Wire M&A”,       “https://feeds.businesswire.com/rss/home/?rss=G22”),
-# Tier 3 — Paywalled but RSS headlines often leak
+# Tier 3 – Paywalled but RSS headlines often leak
 (“The Australian Business”, “https://www.theaustralian.com.au/business/rss”),
 (“DealStreet Asia”,         “https://www.dealstreetasia.com/feed/”),
 (“The Edge Markets (MY)”,   “https://www.theedgemarkets.com/rss/news”),
@@ -261,7 +261,7 @@ try:
 updated = datetime(*entry.updated_parsed[:6])
 return updated >= (datetime.utcnow() - timedelta(days=days))
 except Exception:
-return True   # Include if date unparseable — better than silent drop
+return True   # Include if date unparseable – better than silent drop
 
 def clean(text):
 text = re.sub(r’<[^>]+>’, ’ ‘, text)
@@ -458,7 +458,7 @@ summary_block = (
     if d["summary"] else ""
 )
 
-# NOTE: No blank lines inside the HTML string — blank lines cause Streamlit's
+# NOTE: No blank lines inside the HTML string -- blank lines cause Streamlit's
 # markdown parser to break out of unsafe_allow_html mode, leaking raw tags.
 html = (
     f'<div class="card">'
@@ -524,7 +524,7 @@ st.markdown(”””
 <div class="header-block">
     <div class="header-title">💰 Institutional Deal Radar</div>
     <div class="header-sub">
-        Infrastructure &amp; Energy deal flow — Southeast Asia &amp; Australia
+        Infrastructure &amp; Energy deal flow -- Southeast Asia &amp; Australia
         &nbsp;·&nbsp; Live from institutional RSS sources &nbsp;·&nbsp; Cached 1 hr
     </div>
 </div>
@@ -589,14 +589,14 @@ icon  = “✅” if status == “ok” else “❌”
 color = “#3fb950” if status == “ok” else “#ffa198”
 st.markdown(
 f’<div class="feed-error" style="color:{color};border-color:{color}30;">’
-f’{icon} <b>{name}</b> — {msg}</div>’,
+f’{icon} <b>{name}</b> – {msg}</div>’,
 unsafe_allow_html=True
 )
 st.markdown(”<br>”, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 
-# DEAL CARDS — grouped by type
+# DEAL CARDS – grouped by type
 
 # ─────────────────────────────────────────────
 
